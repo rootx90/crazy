@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Three.js ASCII Sphere with Fibonacci Distribution</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+  </style>
+</head>
+<body>
+  <!-- Import Three.js from a CDN -->
+  <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
+  <script>
+    // Scene, camera, and renderer setup.
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 3;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Group to hold all the digit sprites.
+    const digitGroup = new THREE.Group();
+    scene.add(digitGroup);
+
+    // Fibonacci sphere parameters.
+    const numPoints = 200; // Number of digit sprites.
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.39996323 radians.
+
+    // Helper: Create a texture from a canvas that renders a single digit.
+    function createDigitTexture(digit, size = 64) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Clear with transparent background.
+      ctx.clearRect(0, 0, size, size);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      // Use a monospace font.
+      ctx.font = `${size * 0.8}px monospace`;
+      // Draw the digit in white (we’ll later tint it by adjusting the sprite material’s color).
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(digit, size / 2, size / 2);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    // Create sprites distributed over a sphere.
+    for (let i = 0; i < numPoints; i++) {
+      // Fibonacci sphere algorithm:
+      // y goes linearly from 1 to -1.
+      const y = 1 - (i / (numPoints - 1)) * 2;
+      const radiusAtY = Math.sqrt(1 - y * y);
+      const theta = goldenAngle * i;
+      const x = Math.cos(theta) * radiusAtY;
+      const z = Math.sin(theta) * radiusAtY;
+
+      // For the digit we simply cycle through 0-9.
+      const digit = (i % 10).toString();
+      const texture = createDigitTexture(digit);
+
+      // Create a sprite material with transparent background.
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        color: new THREE.Color(0xffffff),
+        transparent: true
+      });
+      const sprite = new THREE.Sprite(material);
+
+      // Position the sprite on the sphere (multiply by sphere radius, here 1).
+      sprite.position.set(x, y, z);
+
+      // Scale the sprite – you may adjust this so the digit is nicely visible.
+      sprite.scale.set(0.3, 0.3, 0.3);
+
+      // Store the sprite’s “normal” (the outward direction from the sphere’s center).
+      sprite.userData.normal = new THREE.Vector3(x, y, z).normalize();
+
+      digitGroup.add(sprite);
+    }
+
+    // Optional: Add a little ambient light so we can see the scene,
+    // though our sprite brightness is handled manually.
+    scene.add(new THREE.AmbientLight(0x888888));
+
+    // Animation loop.
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Slowly rotate the whole group.
+      digitGroup.rotation.y += 0.005;
+      digitGroup.rotation.x += 0.003;
+
+      // Get the camera's forward (view) direction.
+      const camDir = new THREE.Vector3();
+      camera.getWorldDirection(camDir);
+
+      // For each sprite, update brightness based on the dot product between its normal and the camera direction.
+      digitGroup.children.forEach(sprite => {
+        const normal = sprite.userData.normal.clone();
+        // Transform the sprite’s normal by the group’s rotation.
+        normal.applyQuaternion(digitGroup.quaternion);
+        // Dot product (range: -1 to 1) – clamp it to [0,1] so that only the front side is lit.
+        const dot = Math.max(0, normal.dot(camDir));
+        // Map the dot product to a brightness value.
+        // For instance, let 0 be dim gray (e.g. 0x555555) and 1 be white (0xffffff).
+        const minBrightness = 0x55;
+        const brightness = minBrightness + dot * (0xff - minBrightness);
+        // Convert brightness to a hex string (we assume the same value for R, G, and B).
+        const hex = (brightness << 16) | (brightness << 8) | brightness;
+        sprite.material.color.setHex(hex);
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // Handle browser resizing.
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
